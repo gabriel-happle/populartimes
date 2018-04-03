@@ -157,17 +157,6 @@ def get_popularity_for_day(popularity):
     ]
 
 
-def get_opening_hours_for_day(opening_hours):
-
-    for day in opening_hours:
-
-        day_name = day[0]
-        day_times = day[6]
-
-
-    return
-
-
 def get_detail(place_id):
     """
     loads data for a given area
