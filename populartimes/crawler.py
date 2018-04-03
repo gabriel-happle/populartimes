@@ -20,7 +20,7 @@ from geopy.distance import VincentyDistance
 from queue import Queue
 
 # change for logging visibility
-# logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 
 # urls for google api web service
 radar_url = "https://maps.googleapis.com/maps/api/place/radarsearch/json?location={},{}&radius={}&types={}&key={}"
@@ -157,6 +157,17 @@ def get_popularity_for_day(popularity):
     ]
 
 
+def get_opening_hours_for_day(opening_hours):
+
+    for day in opening_hours:
+
+        day_name = day[0]
+        day_times = day[6]
+
+
+    return
+
+
 def get_detail(place_id):
     """
     loads data for a given area
@@ -171,7 +182,7 @@ def get_detail(place_id):
 
     searchterm = "{} {}".format(detail["name"], detail["formatted_address"])
 
-    popularity, rating, rating_n = get_populartimes(searchterm)
+    popularity, rating, rating_n, opening_hours = get_populartimes(searchterm)
 
     detail_json = {
         "id": detail["place_id"],
@@ -180,6 +191,7 @@ def get_detail(place_id):
         "searchterm": searchterm,
         "types": detail["types"],
         "coordinates": detail["geometry"]["location"],
+        "date_extracted": datetime.datetime.utcnow()
     }
 
     # check optional return parameters
@@ -193,15 +205,19 @@ def get_detail(place_id):
         detail_json["rating_n"] = rating_n
     if "international_phone_number" in detail:
         detail_json["international_phone_number"] = detail["international_phone_number"]
+    if "opening_hours" in detail:
+        detail_json["opening_hours"] = detail["opening_hours"]
 
     # get current popularity
     place_identifier = "{} {}".format(detail["name"], detail["formatted_address"])
-    _, _, _, current_popularity = get_current_popularity(place_identifier)
+    _, _, _, current_popularity, _ = get_current_popularity(place_identifier)
 
     if current_popularity is not None:
         detail_json["current_popularity"] = current_popularity
 
     detail_json["populartimes"] = get_popularity_for_day(popularity) if popularity is not None else []
+
+   # detail_json["opening_hours"] = get_opening_hours_for_day(opening_hours) if opening_hours is not None else []
 
     if params["all_places"] or len(detail_json["populartimes"]) > 0:
         results.append(detail_json)
@@ -215,12 +231,12 @@ def get_populartimes(place_identifier):
     """
     params_url = {
         "tbm": "map",
-        "hl": "de",
+        "hl": "en",
         "tch": 1,
         "q": urllib.parse.quote_plus(place_identifier)
     }
 
-    search_url = "https://www.google.de/search?" + "&".join(k + "=" + str(v) for k, v in params_url.items())
+    search_url = "https://www.google.com/search?" + "&".join(k + "=" + str(v) for k, v in params_url.items())
     logging.info("searchterm: " + search_url)
 
     gcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
@@ -237,7 +253,7 @@ def get_populartimes(place_identifier):
     jdata = json.loads(data)["d"]
     jdata = json.loads(jdata[4:])
 
-    popular_times, rating, rating_n = None, None, None
+    popular_times, rating, rating_n, opening_hours = None, None, None, None
 
     try:
         # get info from result array, has to be adapted if backend api changes
@@ -246,6 +262,7 @@ def get_populartimes(place_identifier):
         rating = info[4][7]
         rating_n = info[4][8]
         popular_times = info[84][0]
+        opening_hours = info[34][1]
 
     # ignore, there is either no info available or no popular times
     # TypeError: rating/rating_n/populartimes in None
@@ -253,7 +270,7 @@ def get_populartimes(place_identifier):
     except (TypeError, IndexError):
         pass
 
-    return popular_times, rating, rating_n
+    return popular_times, rating, rating_n, opening_hours
 
 
 def get_current_popularity(place_identifier):
@@ -278,7 +295,7 @@ def get_current_popularity(place_identifier):
               "!3b1"
     }
 
-    search_url = "https://www.google.de/search?" + "&".join(k + "=" + str(v) for k, v in params_url.items())
+    search_url = "https://www.google.com/search?" + "&".join(k + "=" + str(v) for k, v in params_url.items())
     logging.info("searchterm: " + search_url)
 
     gcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
@@ -295,7 +312,7 @@ def get_current_popularity(place_identifier):
     jdata = json.loads(data)["d"]
     jdata = json.loads(jdata[4:])
 
-    popular_times, rating, rating_n, current_popularity = None, None, None, None
+    popular_times, rating, rating_n, current_popularity, opening_hours = None, None, None, None, None
 
     try:
         # get info from result array, has to be adapted if backend api changes
@@ -304,6 +321,8 @@ def get_current_popularity(place_identifier):
         rating = info[4][7]
         rating_n = info[4][8]
         popular_times = info[84][0]
+
+        opening_hours = info[34][1]
 
         # current_popularity is not available if popular_times is
         current_popularity = info[84][7][1]
@@ -314,7 +333,7 @@ def get_current_popularity(place_identifier):
     except (TypeError, IndexError):
         pass
 
-    return rating, rating_n, popular_times, current_popularity
+    return rating, rating_n, popular_times, current_popularity, opening_hours
 
 
 def get_current_popular_times(api_key, place_id):
@@ -369,6 +388,10 @@ def check_response_code(resp):
     :return:
     """
     if resp["status"] == "OK" or resp["status"] == "ZERO_RESULTS":
+        return
+
+    if resp["status"] == "UNKNOWN_ERROR":
+        logging.info("UNKNONWN_ERROR for place id")
         return
 
     if resp["status"] == "REQUEST_DENIED":
